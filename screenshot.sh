@@ -21,7 +21,7 @@ while IFS=, read -r group url || [ -n "$group" ]; do
   i=$(( $(find "$dir" -name '*.png' | wc -l) + 1 ))
   name=$(printf '%03d-%s' "$i" "$(echo "$url" | sed -E 's#^https?://##; s#[^A-Za-z0-9._-]+#_#g' | cut -c1-80)")
 
-  # Open in a new Chrome window, wait for load, return window bounds as x,y,w,h
+  # Open in a new Chrome window, wait for load, return page area (below the toolbar) as x,y,w,h
   rect=$(osascript - "$url" <<'EOF'
 on run argv
   tell application "Google Chrome"
@@ -33,7 +33,7 @@ on run argv
       if not (loading of active tab of w) then exit repeat
       delay 0.5
     end repeat
-    -- wait for network idle: no new requests finishing for 2s (max 30s)
+    -- wait for network idle: no new requests finishing for 1.5s (max 30s)
     try
       execute active tab of w javascript "performance.setResourceTimingBufferSize(100000); 0"
       set lastCount to -1
@@ -42,7 +42,7 @@ on run argv
         set c to (execute active tab of w javascript "performance.getEntriesByType('resource').length") as integer
         if c = lastCount then
           set quiet to quiet + 1
-          if quiet >= 4 then exit repeat
+          if quiet >= 3 then exit repeat
         else
           set quiet to 0
           set lastCount to c
@@ -50,12 +50,21 @@ on run argv
         delay 0.5
       end repeat
     on error
-      log "warn: Chrome blocks JavaScript from Apple Events, using a fixed 8s wait instead"
-      delay 8
+      log "warn: Chrome blocks JavaScript from Apple Events, using a fixed 6s wait instead"
+      delay 6
     end try
     delay 0.5 -- let the last responses render
     set {l, t, r, b} to bounds of w
-    return (l as text) & "," & (t as text) & "," & ((r - l) as text) & "," & ((b - t) as text)
+    set {top, pw, ph} to {0, r - l, b - t}
+    try
+      -- page area only: skip tabs/address bar (assumes 100% zoom, DevTools closed)
+      set dims to execute active tab of w javascript "[outerHeight - innerHeight, innerWidth, innerHeight].join()"
+      set AppleScript's text item delimiters to ","
+      set {top, pw, ph} to {(text item 1 of dims) as integer, (text item 2 of dims) as integer, (text item 3 of dims) as integer}
+    on error
+      log "warn: can't measure the page area, capturing the whole window"
+    end try
+    return (l as text) & "," & ((t + top) as text) & "," & (pw as text) & "," & (ph as text)
   end tell
 end run
 EOF
