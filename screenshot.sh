@@ -10,19 +10,8 @@ set -euo pipefail
 
 OUT="$HOME/Downloads/$(date +%Y-%m-%d)-screenshots"
 
-while IFS=, read -r group url || [ -n "$group" ]; do
-  # strip Windows line endings, surrounding quotes and whitespace (Excel exports)
-  group=$(echo "$group" | tr -d '\r' | sed -E 's/^[[:space:]"]+|[[:space:]"]+$//g')
-  url=$(echo "$url" | tr -d '\r' | sed -E 's/^[[:space:]"]+|[[:space:]"]+$//g')
-  [ -z "$url" ] || [ "$url" = "url" ] && continue
-
-  dir="$OUT/$(echo "${group:-ungrouped}" | sed -E 's#[/:]+#_#g')"
-  mkdir -p "$dir"
-  i=$(( $(find "$dir" -name '*.png' | wc -l) + 1 ))
-  name=$(printf '%03d-%s' "$i" "$(echo "$url" | sed -E 's#^https?://##; s#[^A-Za-z0-9._-]+#_#g' | cut -c1-80)")
-
-  # Open in a new Chrome window, wait for load, return page area (below the toolbar) as x,y,w,h
-  rect=$(osascript - "$url" <<'EOF'
+# Opens a URL in a new Chrome window, waits for load, returns the page size in pixels as "w h"
+read -r -d '' CAPTURE <<'EOF' || true
 on run argv
   tell application "Google Chrome"
     activate
@@ -54,23 +43,40 @@ on run argv
       delay 6
     end try
     delay 0.5 -- let the last responses render
-    set {l, t, r, b} to bounds of w
-    set {top, pw, ph} to {0, r - l, b - t}
     try
-      -- page area only: skip tabs/address bar (assumes 100% zoom, DevTools closed)
-      set dims to execute active tab of w javascript "[outerHeight - innerHeight, innerWidth, innerHeight].join()"
-      set AppleScript's text item delimiters to ","
-      set {top, pw, ph} to {(text item 1 of dims) as integer, (text item 2 of dims) as integer, (text item 3 of dims) as integer}
+      -- page size, used to cut off tabs/address bar (assumes 100% zoom, DevTools closed)
+      return execute active tab of w javascript "innerWidth + ' ' + innerHeight"
     on error
       log "warn: can't measure the page area, capturing the whole window"
+      return ""
     end try
-    return (l as text) & "," & ((t + top) as text) & "," & (pw as text) & "," & (ph as text)
   end tell
 end run
 EOF
-  ) </dev/null
 
-  if screencapture -x -o -R"$rect" "$dir/$name.png"; then echo "ok   [$group] $url"; else echo "FAIL [$group] $url"; fi
+# Frontmost Chrome window's real position as "x y w h" (Chrome's own AppleScript bounds are wrong on multi-display setups)
+FRONT_WINDOW='ObjC.import("CoreGraphics");
+ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0)))
+  .filter(w => w.kCGWindowOwnerName == "Google Chrome" && w.kCGWindowLayer == 0)
+  .map(w => w.kCGWindowBounds).map(b => [b.X, b.Y, b.Width, b.Height].join(" "))[0]'
+
+while IFS=, read -r group url || [ -n "$group" ]; do
+  # strip Windows line endings, surrounding quotes and whitespace (Excel exports)
+  group=$(echo "$group" | tr -d '\r' | sed -E 's/^[[:space:]"]+|[[:space:]"]+$//g')
+  url=$(echo "$url" | tr -d '\r' | sed -E 's/^[[:space:]"]+|[[:space:]"]+$//g')
+  [ -z "$url" ] || [ "$url" = "url" ] && continue
+
+  dir="$OUT/$(echo "${group:-ungrouped}" | sed -E 's#[/:]+#_#g')"
+  mkdir -p "$dir"
+  i=$(( $(find "$dir" -name '*.png' | wc -l) + 1 ))
+  name=$(printf '%03d-%s' "$i" "$(echo "$url" | sed -E 's#^https?://##; s#[^A-Za-z0-9._-]+#_#g' | cut -c1-80)")
+
+  page=$(osascript -e "$CAPTURE" "$url" </dev/null)
+  read -r x y w h <<< "$(osascript -l JavaScript -e "$FRONT_WINDOW" </dev/null)"
+  # page sits at the bottom of the window; without page size, capture the whole window
+  if [ -n "$page" ]; then read -r w ph <<< "$page"; y=$((y + h - ph)); h=$ph; fi
+
+  if screencapture -x -R"$x,$y,$w,$h" "$dir/$name.png"; then echo "ok   [$group] $url"; else echo "FAIL [$group] $url"; fi
   osascript -e 'tell application "Google Chrome" to close front window' </dev/null
 done < "$1"
 
