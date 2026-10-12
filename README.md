@@ -86,5 +86,5 @@ Differences from the macOS version:
 
 - **Fixed wait:** Windows has no way for the script to see the page's network activity in your normal Chrome, so it waits a fixed 8 seconds after opening each URL. Change it with `-Wait`, for example `-Wait 10`.
 - **Window size:** Chrome opens at its usual window size, and the screenshot is whatever part of the page fits.
-- **Keep it in front:** the page area is captured from the screen, so anything covering the Chrome window ends up in the screenshot.
+- **Runs in the background:** the script captures the Chrome window directly, so it can be behind other windows while the script runs.
 - **Profile:** Chrome opens the window in the profile you used most recently.
