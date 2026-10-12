@@ -1,10 +1,10 @@
-# screenshot.sh
+# Chrome screenshots
 
 Takes screenshots of a list of URLs using your own Chrome profile, so pages you're logged into appear logged in. Screenshots are grouped into folders by date and group name.
 
-macOS only.
+`screenshot.sh` is for macOS. On Windows, use `screenshot.ps1` (see [Windows](#windows)). Both read the same CSV.
 
-## One-time setup
+## One-time setup (macOS)
 
 1. **Screen Recording:** open System Settings → Privacy & Security → Screen & System Audio Recording, turn it on for the app you run the script from (Terminal, iTerm, …), then quit and reopen that app. Without this, screenshots show only your desktop wallpaper.
 2. **Automation:** on the first run, macOS asks whether your terminal may control Google Chrome. Click **Allow**.
@@ -71,3 +71,20 @@ A page that takes about 6 seconds of requests is captured about 8.5 seconds afte
 | `Not authorized to send Apple events to Google Chrome` | System Settings → Privacy & Security → Automation → enable Google Chrome for your terminal. |
 | `warn: Chrome blocks JavaScript from Apple Events` | Turn on Chrome → View → Developer → Allow JavaScript from Apple Events (setup step 3). |
 | Page captured before it finished loading | Raise `quiet >= 3` in the script, or `delay 6` if the Chrome JavaScript setting is off. |
+
+## Windows
+
+`screenshot.ps1` does the same job on Windows. Run it from PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File screenshot.ps1 urls.csv
+```
+
+There's no setup: no permissions to grant and no Chrome settings to change. Screenshots go to `%USERPROFILE%\Downloads\{date}-screenshots\{group}\`, named and numbered the same way as on macOS.
+
+Differences from the macOS version:
+
+- **Fixed wait:** Windows has no way for the script to see the page's network activity in your normal Chrome, so it waits a fixed 8 seconds after opening each URL. Change it with `-Wait`, for example `-Wait 10`.
+- **Window size:** Chrome opens at its usual window size, and the screenshot is whatever part of the page fits.
+- **Keep it in front:** the page area is captured from the screen, so anything covering the Chrome window ends up in the screenshot.
+- **Profile:** Chrome opens the window in the profile you used most recently.
